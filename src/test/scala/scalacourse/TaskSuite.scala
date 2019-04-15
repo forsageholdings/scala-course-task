@@ -1,7 +1,9 @@
 package scalacourse
 
 import cats.implicits._
+import cats.kernel.Eq
 import cats.laws.discipline.MonadErrorTests
+
 import scala.concurrent._
 
 class TaskSuite extends BaseSuite {
@@ -36,7 +38,7 @@ class TaskSuite extends BaseSuite {
     check { (ta: Task[Int], tb: Task[Int], f: (Int, Int) => Long) =>
       val r1 = valueOf(Task.parMap2(ta, tb)(f))
       val r2 = valueOf(ta.flatMap(a => tb.map(b => f(a, b))))
-      r1 == r2
+      r1 === r2
     }
   }
 
@@ -45,7 +47,7 @@ class TaskSuite extends BaseSuite {
 
     check { list: List[Int] =>
       val sum = valueOf(Task.sequence(list.map(Task(_))).map(_.sum))
-      sum == Right(list.sum)
+      sum === Right(list.sum)
     }
   }
 
@@ -54,7 +56,7 @@ class TaskSuite extends BaseSuite {
 
     check { list: List[Int] =>
       val sum = valueOf(Task.parallel(list.map(Task(_))).map(_.sum))
-      sum == Right(list.sum)
+      sum === Right(list.sum)
     }
   }
 }
