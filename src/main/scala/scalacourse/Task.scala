@@ -21,6 +21,8 @@ final class Task[A] private (runFn: ExecutionContext => Future[A]) { self =>
     */
   def map[B](f: A => B): Task[B] =
     new Task[B](implicit ec => {
+      // We can just rely on `Future` for this operation, since
+      // `Future` already has a `map` that does what we want
       self.unsafeRunToFuture(ec).map(f)
     })
 
@@ -33,12 +35,17 @@ final class Task[A] private (runFn: ExecutionContext => Future[A]) { self =>
     */
   def flatMap[B](f: A => Task[B]): Task[B] =
     new Task[B](implicit ec => {
+      // Creating a `Promise` that acts as a variable for holding the final result
       val p = Promise[B]()
+      // Executing our asynchronous computation
       self.unsafeRunToFuture(ec).onComplete {
         case Success(value) =>
+          // N.b. `completeWith` will complete our promise with the result of another `Future`.
+          // We have to apply our function and build another `Future` here.
           p.completeWith(f(value).unsafeRunToFuture(ec))
-        case Failure(exception) =>
-          p.failure(exception)
+
+        case Failure(e) =>
+          p.failure(extract(e))
       }
       p.future
     })
@@ -62,15 +69,22 @@ final class Task[A] private (runFn: ExecutionContext => Future[A]) { self =>
       self.unsafeRunToFuture(ec).onComplete {
         case Success(value) =>
           p.success(Right(value))
-        case Failure(e: ExecutionException) if e.getCause != null =>
-          // Future boxes some exceptions in ExecutionException, so as an API
-          // quirk it's best if we unboxed it ourselves ;-)
-          p.success(Left(e.getCause))
         case Failure(e) =>
-          p.success(Left(e))
+          p.success(Left(extract(e)))
       }
       p.future
     })
+
+  // The Future implementation is stubbornly wrapping exceptions in "ExecutionException",
+  // but we often want the original exception, not wrappers. This is an implementation
+  // quirk that you shouldn't worry about, unless you're building a Task ;-)
+  private def extract(e: Throwable): Throwable =
+    e match {
+      case e2: ExecutionException  if e2.getCause != null =>
+        e2.getCause
+      case _ =>
+        e
+    }
 }
 
 object Task {
